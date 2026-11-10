@@ -15,8 +15,9 @@ npm start            # http://localhost:8080
 
 | Actie | Hoe |
 | --- | --- |
-| Gereedschap kiezen | Klik in de linkerbalk, of gebruik de toetsen `Q`, `1`–`9`, `0`, `-`, `L`, `H`, `M` |
+| Gereedschap kiezen | Klik in de linkerbalk, of gebruik de toetsen `Q`, `1`–`9`, `0`, `-`, `L`, `H`, `M`, `J`, `V` |
 | Straat aanleggen | Gereedschap *Straat* (`1`), sleep een rechte lijn |
+| Snelweg plaatsen | Gereedschap *Snelweg-stuk* (`J`): klik en er komt een stuk van 12 tegels. `R` draait het stuk |
 | Laan aanleggen | Gereedschap *Laan* (`L`): dubbele capaciteit. Een bestaande straat wordt een laan |
 | Zonen | Gereedschap *Wonen*, *Commercieel* of *Industrie*, sleep een vak |
 | Slopen | Gereedschap *Slopen*, sleep een vak |
@@ -31,6 +32,7 @@ npm start            # http://localhost:8080
 
 - **Wegen** zijn de basis. Gebouwen en diensten moeten aan een weg liggen om te werken.
 - **Straten en lanen**: een laan kost meer maar vervoert dubbel zoveel verkeer. Een straat wordt op te waarderen tot laan.
+- **Snelwegen** hebben de meeste capaciteit (240 per tegel). Een bestaande weg kun je opwaarderen. Woningen naast een snelweg zijn lawaaiiger.
 - **Verkeer**: bewoners pendelen over de wegen naar het dichtstbijzijnde bereikbare werk. Een weg die vol zit (rood) verlaagt het geluk van de omwonenden. Een metrostation halveert het autoverkeer in de buurt.
 - **Terrein**: het land heeft heuvels in vier niveaus, met kliffen ertussen. Een rivier snijdt de kaart in tweeën. Over de rivier kun je een **brug** bouwen (een weg op een rivierstuk, duurder). Meren kun je niet oversteken.
 - **Ziekenhuis** verhoogt het geluk in de omgeving.

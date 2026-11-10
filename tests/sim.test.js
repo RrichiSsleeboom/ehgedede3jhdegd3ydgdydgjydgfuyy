@@ -360,3 +360,53 @@ test('inspect shows the road connection for every land tile, not only buildings'
   const far = Sim.inspect(city, 40, 40).find((r) => r[0] === 'Wegaansluiting');
   assert.deepEqual(far, ['Wegaansluiting', 'Nee']);
 });
+
+test('a highway prefab places twelve highway tiles that carry more traffic', () => {
+  const city = flatCity(12);
+  const seg = Sim.highwayPrefab(20, 30, 'h');
+  assert.equal(seg.length, Sim.HIGHWAY_PREFAB_LENGTH);
+  for (const p of seg) {
+    const r = Sim.applyAction(city, { type: 'road', highway: true }, p.x, p.y);
+    assert.ok(r.ok && !r.noop, r.reason);
+  }
+  Sim.refreshNetworks(city);
+  assert.ok(seg.every((p) => city.tiles[idx(p.x, p.y)].hwy && city.tiles[idx(p.x, p.y)].road));
+  // Upgrading never goes back to an avenue.
+  assert.equal(Sim.checkAction(city, { type: 'road', avenue: true }, 25, 30).noop, true);
+});
+
+test('a highway carries 240 commuters per tile before it jams', () => {
+  const city = commuteCity();
+  // Turn the commute road into a highway.
+  for (let x = 20; x <= 44; x++) city.tiles[idx(x, 30)].hwy = true;
+  Sim.simulateDay(city, () => 0.99);
+  // 150 commuters on a highway (capacity 240) -> 62.5%.
+  assert.ok(Math.abs(city.tiles[idx(30, 30)].cong - 150 / 240) < 1e-9, `cong ${city.tiles[idx(30, 30)].cong}`);
+  assert.equal(city.stats.jammed, 0);
+});
+
+test('homes next to a highway are noisier', () => {
+  const city = flatCity(13);
+  roadRow(city, 30, 24, 30);
+  Sim.applyAction(city, { type: 'service', service: 'power' }, 24, 29);
+  city.tiles[idx(23, 31)].g = 'water';
+  Sim.applyAction(city, { type: 'service', service: 'water' }, 24, 31);
+  Sim.applyAction(city, { type: 'zone', zone: 'R' }, 28, 31);
+  Sim.refreshNetworks(city);
+  city.tiles[idx(28, 31)].b = { t: 'R', lvl: 1 };
+  Sim.simulateDay(city, () => 0.99);
+  const quiet = city.tiles[idx(28, 31)].happy;
+  city.tiles[idx(28, 30)].hwy = true;
+  Sim.simulateDay(city, () => 0.99);
+  const noisy = city.tiles[idx(28, 31)].happy;
+  assert.equal(quiet - noisy, 6);
+});
+
+test('highway flag survives a save and load', () => {
+  const city = flatCity(14);
+  roadRow(city, 30, 24, 26);
+  city.tiles[idx(25, 30)].hwy = true;
+  const copy = Sim.deserialize(Sim.serialize(city));
+  assert.equal(copy.tiles[idx(25, 30)].hwy, true);
+  assert.equal(copy.tiles[idx(24, 30)].hwy, false);
+});

@@ -38,7 +38,9 @@
   const ROAD = {
     street: { cost: 20, upkeep: 0.25, capacity: 60 },
     avenue: { cost: 60, upgradeCost: 40, upkeep: 0.6, capacity: 150 },
+    highway: { cost: 120, upgradeCost: 80, upkeep: 1.2, capacity: 240 },
   };
+  const HIGHWAY_PREFAB_LENGTH = 12;
 
   // Level index 0 is unused so that b.lvl (1..3) can index directly.
   const ZONE_INFO = {
@@ -129,6 +131,7 @@
       tree: false,
       road: false,
       avenue: false, // wider road with more capacity (only meaningful when road)
+      hwy: false, // highway: the widest road, nearby homes get noisier
       z: null, // zone painted on the tile: 'R' | 'C' | 'I' | null
       b: null, // building: { t: 'R'|'C'|'I'|serviceKey, lvl }
       // Derived state, recomputed by refreshNetworks / simulateDay:
@@ -440,7 +443,7 @@
     for (let i = 0; i < N; i++) {
       const t = tiles[i];
       if (t.road) {
-        const cap = t.avenue ? ROAD.avenue.capacity : ROAD.street.capacity;
+        const cap = t.hwy ? ROAD.highway.capacity : t.avenue ? ROAD.avenue.capacity : ROAD.street.capacity;
         t.cong = load[i] / cap;
         if (t.cong >= 1) jammed++;
       } else {
@@ -473,6 +476,13 @@
       h -= (1 - net.waterRatio) * 10;
     }
     h -= Math.min(2, t.cong) * 8;
+    // Highways next to a home are noisy.
+    for (const [nx, ny] of neighbors(x, y)) {
+      if (city.tiles[tileIndex(nx, ny)].hwy) {
+        h -= 6;
+        break;
+      }
+    }
     h -= city.pollution[i] * 3;
     if (cov.park[i]) h += cov.park[i] > 1 ? 12 : 8;
     if (cov.police[i]) h += 6;
@@ -522,7 +532,7 @@
     for (let y = 0; y < SIZE; y++) {
       for (let x = 0; x < SIZE; x++) {
         const t = tiles[tileIndex(x, y)];
-        if (t.road) upkeep += t.avenue ? ROAD.avenue.upkeep : ROAD.street.upkeep;
+        if (t.road) upkeep += t.hwy ? ROAD.highway.upkeep : t.avenue ? ROAD.avenue.upkeep : ROAD.street.upkeep;
         if (!t.b) continue;
         if (isService(t.b.t)) {
           upkeep += SERVICE_INFO[t.b.t].upkeep;
@@ -711,13 +721,16 @@
       case 'road': {
         if (t.b) return result(false, 0, 'Sloop eerst het gebouw');
         if (t.road) {
-          // Streets can be upgraded to avenues; avenues never go back.
-          if (!act.avenue || t.avenue) return result(true, 0, '', true);
-          if (city.money < ROAD.avenue.upgradeCost) return result(false, ROAD.avenue.upgradeCost, 'Niet genoeg geld');
-          return result(true, ROAD.avenue.upgradeCost);
+          // Roads only get upgraded: street -> avenue -> highway, never back.
+          const rank = t.hwy ? 2 : t.avenue ? 1 : 0;
+          const want = act.highway ? 2 : act.avenue ? 1 : 0;
+          if (want <= rank) return result(true, 0, '', true);
+          const upgrade = want === 2 ? ROAD.highway.upgradeCost : ROAD.avenue.upgradeCost;
+          if (city.money < upgrade) return result(false, upgrade, 'Niet genoeg geld');
+          return result(true, upgrade);
         }
         if (t.g === 'water' && !t.river) return result(false, 0, 'Je kunt niet over een meer bouwen');
-        let cost = act.avenue ? ROAD.avenue.cost : ROAD.street.cost;
+        let cost = act.highway ? ROAD.highway.cost : act.avenue ? ROAD.avenue.cost : ROAD.street.cost;
         if (t.g === 'water') cost += BRIDGE_COST;
         if (city.money < cost) return result(false, cost, 'Niet genoeg geld');
         return result(true, cost);
@@ -765,10 +778,12 @@
     switch (act.type) {
       case 'road':
         if (t.road) {
-          t.avenue = true;
+          if (act.highway) t.hwy = true;
+          else t.avenue = true;
         } else {
           t.road = true;
-          t.avenue = !!act.avenue;
+          t.avenue = !!act.avenue && !act.highway;
+          t.hwy = !!act.highway;
           t.z = null;
           t.tree = false;
         }
@@ -785,6 +800,7 @@
       case 'bulldoze':
         t.road = false;
         t.avenue = false;
+        t.hwy = false;
         t.b = null;
         t.z = null;
         t.tree = false;
@@ -792,6 +808,16 @@
     }
     city.money -= r.cost;
     return r;
+  }
+
+  // Tiles of a ready-made highway piece, starting at (x, y) and running
+  // east ('h') or south ('v'). Tiles outside the map are checked by checkAction.
+  function highwayPrefab(x, y, dir) {
+    const out = [];
+    for (let i = 0; i < HIGHWAY_PREFAB_LENGTH; i++) {
+      out.push(dir === 'v' ? { x, y: y + i } : { x: x + i, y });
+    }
+    return out;
   }
 
   // Rows describing a tile, for the inspector panel.
@@ -804,7 +830,7 @@
     rows.push(['Terrein', t.g === 'water' ? (t.river ? 'Rivier' : 'Meer') : t.tree ? 'Bos' : 'Gras']);
     if (t.g !== 'water') rows.push(['Hoogte', String(t.el)]);
     if (t.road) {
-      rows.push(['Weg', t.avenue ? 'Laan' : 'Straat']);
+      rows.push(['Weg', t.hwy ? 'Snelweg' : t.avenue ? 'Laan' : 'Straat']);
       if (t.g === 'water') rows.push(['Brug', 'Ja']);
       rows.push(['Verkeersdruk', pct(t.cong)]);
     }
@@ -851,6 +877,7 @@
         tree: t.tree,
         road: t.road,
         avenue: t.avenue,
+        hwy: t.hwy,
         z: t.z,
         b: t.b,
       })),
@@ -883,6 +910,7 @@
         t.tree = !!s.tree;
         t.road = !!s.road;
         t.avenue = !!s.avenue;
+        t.hwy = !!s.hwy;
         t.z = s.z && isZone(s.z) ? s.z : null;
         t.b = s.b && (isZone(s.b.t) || isService(s.b.t)) ? { t: s.b.t, lvl: s.b.lvl || 1 } : null;
         return t;
@@ -900,6 +928,8 @@
     MAX_ELEVATION,
     ROAD,
     BRIDGE_COST,
+    HIGHWAY_PREFAB_LENGTH,
+    highwayPrefab,
     ZONE_INFO,
     SERVICE_INFO,
     MILESTONES,

@@ -20,6 +20,8 @@
   const HOUSE_ROOFS = ['#a4482e', '#7a3b2e', '#3d5a80', '#6b4f3a', '#8b5e3c'];
   const ASPHALT = '#4a4f57';
   const AVENUE_ASPHALT = '#5c616b';
+  const HIGHWAY_ASPHALT = '#363b43';
+  const CAR_COLORS = ['#e8e8e8', '#d64545', '#3c7dd9', '#f2b84b', '#2e2e2e'];
   const JAM = '#c9483a';
 
   // Stable pseudo-random value per tile, so colours don't flicker between frames.
@@ -147,6 +149,7 @@
         const x1 = Math.min(d, N - 1);
         for (let x = x0; x <= x1; x++) this.drawTile(city, x, d - x);
       }
+      this.drawCars(city);
 
       if (this.night > 0) {
         ctx.fillStyle = `rgba(8, 16, 48, ${(0.5 * this.night).toFixed(3)})`;
@@ -269,9 +272,9 @@
         if (city.tiles[ny * N + nx].road) arms.push([nx, ny]);
       }
 
-      const base = t.avenue ? AVENUE_ASPHALT : ASPHALT;
+      const base = t.hwy ? HIGHWAY_ASPHALT : t.avenue ? AVENUE_ASPHALT : ASPHALT;
       const color = t.cong > 0.5 ? mixHex(base, JAM, Math.min(1, (t.cong - 0.5) / 1.0)) : base;
-      const width = TW * (t.avenue ? 0.52 : 0.36) * z;
+      const width = TW * (t.hwy ? 0.62 : t.avenue ? 0.52 : 0.36) * z;
 
       ctx.lineCap = 'butt';
       ctx.strokeStyle = color;
@@ -290,8 +293,8 @@
       ctx.fill();
 
       // Centre markings: white dashes for streets, yellow for avenues.
-      ctx.strokeStyle = t.avenue ? 'rgba(242, 209, 107, 0.9)' : 'rgba(255, 255, 255, 0.7)';
-      ctx.lineWidth = Math.max(1, (t.avenue ? 1.5 : 1.1) * z);
+      ctx.strokeStyle = t.hwy ? 'rgba(255, 255, 255, 0.85)' : t.avenue ? 'rgba(242, 209, 107, 0.9)' : 'rgba(255, 255, 255, 0.7)';
+      ctx.lineWidth = Math.max(1, (t.hwy ? 1.8 : t.avenue ? 1.5 : 1.1) * z);
       ctx.setLineDash([4 * z, 4 * z]);
       for (const [nx, ny] of arms) {
         const p = this.project(nx + 0.5, ny + 0.5, city.tiles[ny * N + nx].el);
@@ -301,6 +304,42 @@
         ctx.stroke();
       }
       ctx.setLineDash([]);
+    }
+
+    // Cars drive along roads that carry commuters. Busier roads move slower.
+    drawCars(city) {
+      const ctx = this.ctx;
+      const N = city.size;
+      const z = this.cam.zoom;
+      const angleX = Math.atan2(TH / 2, TW / 2); // screen direction of +x
+      const angleY = Math.atan2(TH / 2, -TW / 2); // screen direction of +y
+      for (let y = 0; y < N; y++) {
+        for (let x = 0; x < N; x++) {
+          const t = city.tiles[y * N + x];
+          if (!t.road || !(t.cong > 0)) continue;
+          const hor = (x > 0 && city.tiles[y * N + x - 1].road) || (x < N - 1 && city.tiles[y * N + x + 1].road);
+          const ver = (y > 0 && city.tiles[(y - 1) * N + x].road) || (y < N - 1 && city.tiles[(y + 1) * N + x].road);
+          if (!hor && !ver) continue;
+
+          const hv = hash(x, y);
+          const speed = 0.8 / (1 + 2 * t.cong); // tiles per second
+          const f = (this.time * speed + (hv % 1000) / 1000) % 1;
+          const forward = (hv & 1) === 0;
+          const lane = (hv >>> 4) & 1 ? 0.33 : 0.67;
+          const along = forward ? f : 1 - f;
+          const wx = hor ? x + along : x + lane;
+          const wy = hor ? y + lane : y + along;
+          const p = this.project(wx, wy, t.el);
+          if (p.x < -20 || p.x > this.w + 20 || p.y < -20 || p.y > this.h + 20) continue;
+
+          ctx.save();
+          ctx.translate(p.x, p.y);
+          ctx.rotate(hor ? angleX : angleY);
+          ctx.fillStyle = CAR_COLORS[(hv >>> 8) % CAR_COLORS.length];
+          ctx.fillRect(-4 * z, -2.2 * z, 8 * z, 4.4 * z);
+          ctx.restore();
+        }
+      }
     }
 
     drawTree(cx, cy, z, hv) {

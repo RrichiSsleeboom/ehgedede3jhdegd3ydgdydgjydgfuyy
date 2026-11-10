@@ -20,6 +20,7 @@
     { id: 'pan', group: 'Basis', label: 'Verschuiven', key: 'V', kind: 'pan' },
     { id: 'road', group: 'Basis', label: 'Straat', key: '1', kind: 'line', action: { type: 'road', avenue: false } },
     { id: 'avenue', group: 'Basis', label: 'Laan', key: 'L', kind: 'line', action: { type: 'road', avenue: true } },
+    { id: 'highway', group: 'Basis', label: 'Snelweg-stuk', key: 'J', kind: 'point', prefab: true, action: { type: 'road', highway: true } },
     { id: 'bulldoze', group: 'Basis', label: 'Slopen', key: '5', kind: 'rect', action: { type: 'bulldoze' } },
     { id: 'zone-R', group: 'Zones', label: 'Wonen', key: '2', kind: 'rect', action: { type: 'zone', zone: 'R' }, swatch: '#7dd87d' },
     { id: 'zone-C', group: 'Zones', label: 'Commercieel', key: '3', kind: 'rect', action: { type: 'zone', zone: 'C' }, swatch: '#6fb7ff' },
@@ -48,6 +49,7 @@
   let speed = 1;
   let dayAcc = 0;
   let currentTool = TOOLS[0];
+  let prefabDir = 'h'; // orientation of ready-made pieces: 'h' east, 'v' south
   let drag = null; // { start, end } in tile coords
   let pan = null; // { sx, sy, camX, camY }
   let hover = null;
@@ -346,16 +348,26 @@
     hudDirty = true;
   }
 
+  // Tiles a single click on the point tools affects: one tile, or a whole
+  // ready-made piece (e.g. a highway section) when the tool is a prefab.
+  function pointTiles(tile) {
+    if (currentTool.prefab) return Sim.highwayPrefab(tile.x, tile.y, prefabDir);
+    return [tile];
+  }
+
   function applyPoint(tile) {
-    const r = Sim.applyAction(city, currentTool.action, tile.x, tile.y);
-    if (!r.ok) {
-      toast(r.reason, 'bad');
-      return;
+    let changed = 0;
+    let lastFail = '';
+    for (const p of pointTiles(tile)) {
+      const r = Sim.applyAction(city, currentTool.action, p.x, p.y);
+      if (!r.ok) lastFail = r.reason;
+      else if (!r.noop) changed++;
     }
-    if (r.noop) return;
+    if (lastFail) toast(lastFail, 'bad');
+    if (!changed) return;
     Sim.refreshNetworks(city);
     const t = city.tiles[Sim.tileIndex(tile.x, tile.y)];
-    if (t.net < 0) {
+    if (!currentTool.prefab && t.net < 0) {
       toast('Let op: deze dienst ligt niet aan een weg en werkt niet tot je een weg aanlegt.', 'info');
     }
     hudDirty = true;
@@ -368,7 +380,7 @@
     let reason = '';
     let tiles = [];
     if (drag) tiles = dragTiles();
-    else if (hover && currentTool.kind === 'point') tiles = [hover];
+    else if (hover && currentTool.kind === 'point') tiles = pointTiles(hover);
     if (currentTool.action) {
       for (const p of tiles) {
         const r = Sim.checkAction(city, currentTool.action, p.x, p.y);
@@ -386,9 +398,9 @@
   // ---- Keyboard ------------------------------------------------------------
 
   window.addEventListener('keydown', (e) => {
-    if (e.target.tagName === 'INPUT' || e.target.tagName === 'BUTTON') {
-      if (e.code !== 'Space') return;
-    }
+    // Typing in a text field keeps its keys. After a click on a toolbar button
+    // the button has focus, so shortcuts must still work there.
+    if (e.target.tagName === 'INPUT') return;
     if (e.code === 'Space') {
       e.preventDefault();
       setSpeed(speed === 0 ? 1 : 0);
@@ -399,6 +411,11 @@
       return;
     }
     const k = e.key.toUpperCase();
+    if (k === 'R' && currentTool.prefab) {
+      prefabDir = prefabDir === 'h' ? 'v' : 'h';
+      updateStatusbar();
+      return;
+    }
     const tool = TOOLS.find((t) => t.key === k);
     if (tool) setTool(tool);
   });
@@ -500,6 +517,9 @@
           ? 'Sleep een vak om te zonen. Wegen zijn nodig om gebouwen te laten groeien.'
           : 'Sleep een vak om gebouwen, wegen en bomen te slopen.';
       case 'point':
+        if (currentTool.prefab) {
+          return `Plaats een snelwegstuk van 12 tegels. R draait het stuk (nu ${prefabDir === 'h' ? 'horizontaal' : 'verticaal'}).`;
+        }
         return currentTool.action.service === 'water'
           ? 'Plaats naast water. Verbind met een weg om te werken.'
           : 'Plaats op een lege tegel die aan een weg ligt.';
