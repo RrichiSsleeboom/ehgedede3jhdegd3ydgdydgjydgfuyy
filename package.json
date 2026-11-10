@@ -1,0 +1,11 @@
+{
+  "name": "stadsbouwer",
+  "version": "0.1.0",
+  "description": "Een Cities: Skylines-achtige stadsbouwer in de browser (geen afhankelijkheden).",
+  "private": true,
+  "scripts": {
+    "start": "python3 -m http.server 8080",
+    "test": "node --test tests/"
+  },
+  "license": "MIT"
+}

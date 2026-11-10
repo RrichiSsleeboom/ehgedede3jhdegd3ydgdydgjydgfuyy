@@ -1,0 +1,88 @@
+<!doctype html>
+<html lang="nl">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Stadsbouwer</title>
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+  <header id="hud">
+    <div class="brand">
+      <span id="cityName" title="Klik om de stad te hernoemen">Nieuwe Stad</span>
+      <span id="stDate" class="muted">Dag 1 · 00:00</span>
+    </div>
+    <div class="stats">
+      <div class="stat"><span class="lbl">Geld</span><b id="stMoney" class="val">€0</b></div>
+      <div class="stat"><span class="lbl">Inwoners</span><b id="stPop" class="val">0</b></div>
+      <div class="stat"><span class="lbl">Banen</span><b id="stJobs" class="val">0</b></div>
+      <div class="stat"><span class="lbl">Geluk</span><b id="stHappy" class="val">–</b></div>
+      <div class="stat"><span class="lbl">Stroom</span><b id="stPower" class="val">–</b></div>
+      <div class="stat"><span class="lbl">Water</span><b id="stWater" class="val">–</b></div>
+    </div>
+    <div class="controls">
+      <div class="speed" role="group" aria-label="Snelheid">
+        <button data-speed="0" title="Pauze (spatie)">❚❚</button>
+        <button data-speed="1" title="Normaal">1×</button>
+        <button data-speed="2" title="Snel">2×</button>
+        <button data-speed="3" title="Heel snel">3×</button>
+      </div>
+      <button id="btnPanel" title="Begroting tonen/verbergen">Begroting</button>
+      <button id="btnSave">Opslaan</button>
+      <button id="btnLoad">Laden</button>
+      <button id="btnNew">Nieuw</button>
+    </div>
+  </header>
+
+  <aside id="toolbar">
+    <div id="tools"></div>
+  </aside>
+
+  <main id="stage">
+    <canvas id="view"></canvas>
+    <div id="toolHint" class="hint"></div>
+    <div id="log" aria-live="polite"></div>
+  </main>
+
+  <aside id="side">
+    <section>
+      <h3>Begroting</h3>
+      <div class="row"><span>Inkomsten</span><b id="incomeTxt" class="good">€0</b></div>
+      <div class="row"><span>Uitgaven</span><b id="upkeepTxt" class="bad">€0</b></div>
+      <div class="row"><span>Saldo per dag</span><b id="netTxt">€0</b></div>
+      <div class="taxes">
+        <label>Belasting wonen <span id="taxRv">9%</span>
+          <input type="range" id="taxR" min="0" max="20" step="1" value="9" /></label>
+        <label>Belasting commercieel <span id="taxCv">9%</span>
+          <input type="range" id="taxC" min="0" max="20" step="1" value="9" /></label>
+        <label>Belasting industrie <span id="taxIv">9%</span>
+          <input type="range" id="taxI" min="0" max="20" step="1" value="9" /></label>
+      </div>
+      <p class="muted small">Hogere belasting verlaagt het geluk van bewoners. Lagere belasting verhoogt het.</p>
+    </section>
+
+    <section>
+      <h3>Stad</h3>
+      <div class="row"><span>Inwoners</span><b id="statPop">0</b></div>
+      <div class="row"><span>Wegtegels</span><b id="statRoads">0</b></div>
+      <div class="row"><span>Vraag</span><b id="statDemand">–</b></div>
+      <canvas id="spark" class="spark"></canvas>
+      <p class="muted small">Inwoners per dag</p>
+    </section>
+
+    <section>
+      <h3>Tegel</h3>
+      <div id="details"></div>
+    </section>
+  </aside>
+
+  <footer id="statusbar">
+    <span id="info"></span>
+    <span id="cost"></span>
+  </footer>
+
+  <script src="js/sim.js"></script>
+  <script src="js/render.js"></script>
+  <script src="js/ui.js"></script>
+</body>
+</html>
