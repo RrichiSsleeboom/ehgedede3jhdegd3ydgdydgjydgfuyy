@@ -349,3 +349,14 @@ test('a loaded city shows its population and congestion straight away', () => {
   assert.ok(loaded.stats.roads > 0);
   assert.ok(loaded.stats.upkeep > 0, 'budget numbers are restored on load');
 });
+
+test('inspect shows the road connection for every land tile, not only buildings', () => {
+  const city = flatCity(8);
+  roadRow(city, 30, 24, 26);
+  const next = Sim.inspect(city, 27, 30).find((r) => r[0] === 'Wegaansluiting');
+  assert.equal(next, undefined, 'a road tile itself has no connection row');
+  const beside = Sim.inspect(city, 25, 31).find((r) => r[0] === 'Wegaansluiting');
+  assert.deepEqual(beside, ['Wegaansluiting', 'Ja']);
+  const far = Sim.inspect(city, 40, 40).find((r) => r[0] === 'Wegaansluiting');
+  assert.deepEqual(far, ['Wegaansluiting', 'Nee']);
+});

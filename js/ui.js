@@ -468,6 +468,7 @@
     if (hover) {
       const rows = Sim.inspect(city, hover.x, hover.y) || [];
       const short = rows.filter((r) => ['Gebouw', 'Zone', 'Weg'].includes(r[0])).map((r) => r[1]);
+      if (rows.some((r) => r[0] === 'Wegaansluiting' && r[1] === 'Nee')) short.push('geen wegaansluiting');
       info.textContent = `(${hover.x}, ${hover.y}) ${short.join(' · ') || rows[0][1]}`;
     } else {
       info.textContent = '';
@@ -509,16 +510,31 @@
 
   function updateDetails() {
     const box = $('details');
+    const sheetBody = $('sheetBody');
     if (!selected) {
       box.innerHTML = '<p class="muted">Selecteer een tegel met het inspectiegereedschap (Q).</p>';
+      document.body.classList.remove('has-selection');
       return;
     }
     const rows = Sim.inspect(city, selected.x, selected.y);
     if (!rows) return;
-    box.innerHTML =
+    const html =
       `<div class="muted">Tegel (${selected.x}, ${selected.y})</div>` +
-      rows.map(([k, v]) => `<div class="row"><span>${k}</span><b>${v}</b></div>`).join('');
+      rows
+        .map(([k, v]) => {
+          const bad = (k === 'Wegaansluiting' || k === 'Stroom' || k === 'Water') && v === 'Nee';
+          return `<div class="row"><span>${k}</span><b class="${bad ? 'no-road' : ''}">${v}</b></div>`;
+        })
+        .join('');
+    box.innerHTML = html;
+    sheetBody.innerHTML = html;
+    document.body.classList.add('has-selection');
   }
+
+  $('sheetClose').addEventListener('click', () => {
+    selected = null;
+    updateDetails();
+  });
 
   function drawSparkline() {
     const sc = $('spark');

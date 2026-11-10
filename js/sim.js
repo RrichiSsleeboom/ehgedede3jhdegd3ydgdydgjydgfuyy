@@ -817,8 +817,10 @@
         rows.push(['Gebouw', SERVICE_INFO[t.b.t].name]);
       }
     }
-    if (t.b || t.z) {
+    if (t.g !== 'water' && !t.road) {
       rows.push(['Wegaansluiting', t.net >= 0 ? 'Ja' : 'Nee']);
+    }
+    if (t.b || t.z) {
       if (t.net >= 0) {
         rows.push(['Stroom', t.powered ? 'Ja' : 'Nee']);
         rows.push(['Water', t.watered ? 'Ja' : 'Nee']);

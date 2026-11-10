@@ -212,6 +212,16 @@
         if (window.Sim.isService(t.b.t)) this.drawService(x, y, t, hv);
         else this.drawZoneBuilding(x, y, t, hv);
       }
+
+      // Zoned or built tiles without road access get a red dashed outline.
+      if ((t.z || t.b) && t.net < 0) {
+        ctx.strokeStyle = 'rgba(255, 90, 90, 0.95)';
+        ctx.lineWidth = Math.max(1.5, 2 * z);
+        ctx.setLineDash([4 * z, 3 * z]);
+        this.diamondPath(x, y, e);
+        ctx.stroke();
+        ctx.setLineDash([]);
+      }
     }
 
     // Visible side faces where this tile is higher than its neighbour to the

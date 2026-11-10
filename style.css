@@ -259,12 +259,43 @@ h3 {
 #statusbar #cost { color: var(--text); font-variant-numeric: tabular-nums; }
 #statusbar #cost.bad { color: var(--bad); }
 
+/* ---- Tile sheet (phones): shown over the map when a tile is selected ----- */
+
+#sheet { display: none; }
+
+.sheet-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 6px;
+}
+#sheetClose { padding: 2px 8px; }
+#sheet .row { display: flex; justify-content: space-between; gap: 8px; padding: 3px 0; font-size: 14px; }
+#sheet .row span { color: var(--muted); }
+#sheet .row b { text-align: right; }
+.no-road { color: var(--bad); }
+
 /* ---- Narrow screens ----------------------------------------------------- */
 
 @media (max-width: 900px) {
   body { grid-template-columns: 150px 1fr; }
   #side { display: none; }
   body.panel-hidden { grid-template-columns: 150px 1fr; }
+  body.has-selection #sheet {
+    display: block;
+    position: fixed;
+    left: 8px;
+    right: 8px;
+    bottom: 36px;
+    max-height: 45vh;
+    overflow-y: auto;
+    padding: 10px 12px;
+    background: var(--panel);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    box-shadow: 0 8px 24px rgba(0, 0, 0, 0.4);
+    z-index: 5;
+  }
   #hud { gap: 8px 12px; }
   .stats { gap: 8px 12px; }
 }
