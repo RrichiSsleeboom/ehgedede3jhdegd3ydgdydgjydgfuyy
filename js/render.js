@@ -85,6 +85,13 @@
       this.cam.y = sy - (before.x + before.y) * (TH / 2) * zoom;
     }
 
+    // Sets the zoom so world point (wx, wy) stays under screen point (sx, sy).
+    zoomAt(zoom, wx, wy, sx, sy) {
+      this.cam.zoom = zoom;
+      this.cam.x = sx - (wx - wy) * (TW / 2) * zoom;
+      this.cam.y = sy - (wx + wy) * (TH / 2) * zoom;
+    }
+
     // World (x, y) at elevation level `lift` to screen coordinates.
     project(x, y, lift) {
       const z = this.cam.zoom;

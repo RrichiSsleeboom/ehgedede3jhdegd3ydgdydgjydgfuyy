@@ -17,6 +17,7 @@
   //   point   -> single click places a service
   const TOOLS = [
     { id: 'inspect', group: 'Basis', label: 'Inspecteren', key: 'Q', kind: 'inspect' },
+    { id: 'pan', group: 'Basis', label: 'Verschuiven', key: 'V', kind: 'pan' },
     { id: 'road', group: 'Basis', label: 'Straat', key: '1', kind: 'line', action: { type: 'road', avenue: false } },
     { id: 'avenue', group: 'Basis', label: 'Laan', key: 'L', kind: 'line', action: { type: 'road', avenue: true } },
     { id: 'bulldoze', group: 'Basis', label: 'Slopen', key: '5', kind: 'rect', action: { type: 'bulldoze' } },
@@ -160,22 +161,58 @@
 
   canvas.addEventListener('contextmenu', (e) => e.preventDefault());
 
+  // Touch handling. Active pointers are tracked so that two fingers can pinch to
+  // zoom and pan together. One finger pans on inspect, place and pan tools; on
+  // the build tools (roads, zones, bulldozer) it draws, and the pan tool is there
+  // to scroll the map then.
+  const touches = new Map(); // pointerId -> client { x, y }
+  let pinch = null; // { anchor: world point, zoom, dist }
+  let gesture = null; // one-pointer gesture: a tap or a pan
+  const TAP_SLOP = 8; // pixels a finger may move and still count as a tap
+
+  const centroid = () => {
+    const pts = [...touches.values()].slice(0, 2);
+    const r = canvas.getBoundingClientRect();
+    return {
+      sx: (pts[0].x + pts[1].x) / 2 - r.left,
+      sy: (pts[0].y + pts[1].y) / 2 - r.top,
+      dist: Math.hypot(pts[0].x - pts[1].x, pts[0].y - pts[1].y),
+    };
+  };
+
   canvas.addEventListener('pointerdown', (e) => {
     const p = localPoint(e);
+    touches.set(e.pointerId, { x: e.clientX, y: e.clientY });
+    canvas.setPointerCapture(e.pointerId);
+
     if (e.button === 1 || e.button === 2) {
       pan = { sx: e.clientX, sy: e.clientY, camX: renderer.cam.x, camY: renderer.cam.y };
-      canvas.setPointerCapture(e.pointerId);
       return;
     }
     if (e.button !== 0) return;
-    const tile = renderer.tileAt(p.sx, p.sy);
-    if (!tile) return;
-    canvas.setPointerCapture(e.pointerId);
 
-    if (currentTool.kind === 'inspect') {
+    if (touches.size === 2) {
+      // A second finger turns the gesture into a pinch and cancels any drawing.
+      gesture = null;
+      drag = null;
+      const c = centroid();
+      pinch = { anchor: renderer.unproject(c.sx, c.sy), zoom: renderer.cam.zoom, dist: c.dist };
+      return;
+    }
+    if (touches.size > 2) return;
+
+    const tile = renderer.tileAt(p.sx, p.sy);
+    const kind = currentTool.kind;
+    if (kind === 'pan' || (e.pointerType === 'touch' && (kind === 'inspect' || kind === 'point'))) {
+      // Decide on release whether this was a tap (act) or a swipe (pan).
+      gesture = { id: e.pointerId, sx: e.clientX, sy: e.clientY, camX: renderer.cam.x, camY: renderer.cam.y, moved: false, tile };
+      return;
+    }
+    if (!tile) return;
+    if (kind === 'inspect') {
       selected = tile;
       updateDetails();
-    } else if (currentTool.kind === 'point') {
+    } else if (kind === 'point') {
       applyPoint(tile);
     } else {
       drag = { start: tile, end: tile };
@@ -184,6 +221,27 @@
 
   canvas.addEventListener('pointermove', (e) => {
     const p = localPoint(e);
+    if (touches.has(e.pointerId)) touches.set(e.pointerId, { x: e.clientX, y: e.clientY });
+
+    if (pinch && touches.size >= 2) {
+      const c = centroid();
+      const zoom = Math.min(ZOOM_MAX, Math.max(ZOOM_MIN, pinch.zoom * (c.dist / pinch.dist)));
+      renderer.zoomAt(zoom, pinch.anchor.x, pinch.anchor.y, c.sx, c.sy);
+      hover = null;
+      updateStatusbar();
+      return;
+    }
+
+    if (gesture && gesture.id === e.pointerId) {
+      const dx = e.clientX - gesture.sx;
+      const dy = e.clientY - gesture.sy;
+      if (!gesture.moved && Math.hypot(dx, dy) > TAP_SLOP) gesture.moved = true;
+      if (gesture.moved) {
+        renderer.cam.x = gesture.camX + dx;
+        renderer.cam.y = gesture.camY + dy;
+      }
+    }
+
     if (pan) {
       renderer.cam.x = pan.camX + (e.clientX - pan.sx);
       renderer.cam.y = pan.camY + (e.clientY - pan.sy);
@@ -193,12 +251,27 @@
     updateStatusbar();
   });
 
-  function endPointer() {
+  function endPointer(e) {
+    touches.delete(e.pointerId);
+    if (touches.size < 2) pinch = null;
+
+    if (gesture && gesture.id === e.pointerId) {
+      // A finger that did not move is a tap: act on the tile it started on.
+      if (!gesture.moved && gesture.tile) {
+        if (currentTool.kind === 'inspect') {
+          selected = gesture.tile;
+          updateDetails();
+        } else if (currentTool.kind === 'point') {
+          applyPoint(gesture.tile);
+        }
+      }
+      gesture = null;
+    }
     if (pan) {
       pan = null;
       return;
     }
-    if (drag) {
+    if (drag && touches.size === 0) {
       commitDrag();
       drag = null;
     }
@@ -206,8 +279,10 @@
   canvas.addEventListener('pointerup', endPointer);
   canvas.addEventListener('pointercancel', endPointer);
   canvas.addEventListener('pointerleave', () => {
-    hover = null;
-    updateStatusbar();
+    if (touches.size === 0) {
+      hover = null;
+      updateStatusbar();
+    }
   });
 
   canvas.addEventListener(
@@ -411,7 +486,9 @@
   function toolHint() {
     switch (currentTool.kind) {
       case 'inspect':
-        return 'Klik op een tegel voor details. Rechtermuisknop of middelste muisknop: verschuiven. Scrollen: zoomen.';
+        return 'Klik op een tegel voor details. Rechtermuisknop of middelste muisknop: verschuiven. Scrollen: zoomen. Op een telefoon: swipe om te verschuiven, twee vingers om te zoomen.';
+      case 'pan':
+        return 'Sleep om de kaart te verschuiven. Twee vingers om te zoomen.';
       case 'line':
         if (currentTool.action.avenue) {
           return 'Sleep om een laan aan te leggen (dubbele capaciteit). Een bestaande straat wordt een laan.';
