@@ -18,11 +18,14 @@
   const TOOLS = [
     { id: 'inspect', group: 'Basis', label: 'Inspecteren', key: 'Q', kind: 'inspect' },
     { id: 'pan', group: 'Basis', label: 'Verschuiven', key: 'V', kind: 'pan' },
-    { id: 'road', group: 'Basis', label: 'Straat', key: '1', kind: 'line', action: { type: 'road', avenue: false } },
-    { id: 'avenue', group: 'Basis', label: 'Laan', key: 'L', kind: 'line', action: { type: 'road', avenue: true } },
-    { id: 'highway', group: 'Basis', label: 'Snelweg-stuk', key: 'J', kind: 'point', prefab: true, action: { type: 'road', highway: true } },
+    { id: 'local', group: 'Basis', label: 'Landweg', key: 'G', kind: 'line', action: { type: 'road', kind: 'local' } },
+    { id: 'road', group: 'Basis', label: 'Straat', key: '1', kind: 'line', action: { type: 'road', kind: 'street' } },
+    { id: 'avenue', group: 'Basis', label: 'Laan', key: 'L', kind: 'line', action: { type: 'road', kind: 'avenue' } },
+    { id: 'highway', group: 'Basis', label: 'Snelweg-stuk', key: 'J', kind: 'point', prefab: true, action: { type: 'road', kind: 'highway' } },
     { id: 'bulldoze', group: 'Basis', label: 'Slopen', key: '5', kind: 'rect', action: { type: 'bulldoze' } },
     { id: 'zone-R', group: 'Zones', label: 'Wonen', key: '2', kind: 'rect', action: { type: 'zone', zone: 'R' }, swatch: '#7dd87d' },
+    { id: 'zone-V', group: 'Zones', label: 'Villawijk', key: 'K', kind: 'rect', action: { type: 'zone', zone: 'V' }, swatch: '#a8ec9a' },
+    { id: 'zone-A', group: 'Zones', label: 'Appartementen', key: 'A', kind: 'rect', action: { type: 'zone', zone: 'A' }, swatch: '#2e8b57' },
     { id: 'zone-C', group: 'Zones', label: 'Commercieel', key: '3', kind: 'rect', action: { type: 'zone', zone: 'C' }, swatch: '#6fb7ff' },
     { id: 'zone-I', group: 'Zones', label: 'Industrie', key: '4', kind: 'rect', action: { type: 'zone', zone: 'I' }, swatch: '#f2d16b' },
     { id: 'svc-park', group: 'Diensten', label: 'Park', key: '6', kind: 'point', action: { type: 'service', service: 'park' } },
@@ -508,7 +511,10 @@
       case 'pan':
         return 'Sleep om de kaart te verschuiven. Twee vingers om te zoomen.';
       case 'line':
-        if (currentTool.action.avenue) {
+        if (currentTool.action.kind === 'local') {
+          return 'Sleep om een goedkope landweg aan te leggen. Weinig capaciteit, en de weg kan later worden opgewaardeerd.';
+        }
+        if (currentTool.action.kind === 'avenue') {
           return 'Sleep om een laan aan te leggen (dubbele capaciteit). Een bestaande straat wordt een laan.';
         }
         return 'Sleep om een rechte straat aan te leggen. Over een rivier komt een brug (duurder).';

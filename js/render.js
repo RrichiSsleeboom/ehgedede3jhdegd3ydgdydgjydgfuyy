@@ -13,14 +13,26 @@
   const EARTH = '#7d5f3f';
   const ZONE_TINT = {
     R: 'rgba(120, 220, 120, 0.42)',
+    V: 'rgba(170, 240, 150, 0.42)',
+    A: 'rgba(40, 140, 80, 0.5)',
     C: 'rgba(90, 160, 255, 0.42)',
     I: 'rgba(240, 200, 80, 0.42)',
   };
+  const VILLA_WALLS = ['#fbf6ea', '#f1e6cf', '#e8f0f5'];
+  const VILLA_ROOFS = ['#8c4a3a', '#3f6f5a', '#5a5a7a'];
+  const FLAT_WALLS = ['#c9a27a', '#b5654a', '#d8c7a5'];
   const HOUSE_WALLS = ['#f4e4c1', '#e9d2a6', '#cfe6f0', '#f3c3c0', '#d8e8c8'];
   const HOUSE_ROOFS = ['#a4482e', '#7a3b2e', '#3d5a80', '#6b4f3a', '#8b5e3c'];
   const ASPHALT = '#4a4f57';
   const AVENUE_ASPHALT = '#5c616b';
   const HIGHWAY_ASPHALT = '#363b43';
+  // Look of each road type: base colour, width (fraction of a tile), markings.
+  const ROAD_STYLE = {
+    local: { base: '#7a6a4f', width: 0.26, mark: 'rgba(0, 0, 0, 0)', lw: 1 },
+    street: { base: ASPHALT, width: 0.36, mark: 'rgba(255, 255, 255, 0.7)', lw: 1.1 },
+    avenue: { base: AVENUE_ASPHALT, width: 0.52, mark: 'rgba(242, 209, 107, 0.9)', lw: 1.5 },
+    highway: { base: HIGHWAY_ASPHALT, width: 0.62, mark: 'rgba(255, 255, 255, 0.85)', lw: 1.8 },
+  };
   const CAR_COLORS = ['#e8e8e8', '#d64545', '#3c7dd9', '#f2b84b', '#2e2e2e'];
   const JAM = '#c9483a';
 
@@ -272,9 +284,10 @@
         if (city.tiles[ny * N + nx].road) arms.push([nx, ny]);
       }
 
-      const base = t.hwy ? HIGHWAY_ASPHALT : t.avenue ? AVENUE_ASPHALT : ASPHALT;
+      const style = ROAD_STYLE[t.rt] || ROAD_STYLE.street;
+      const base = style.base;
       const color = t.cong > 0.5 ? mixHex(base, JAM, Math.min(1, (t.cong - 0.5) / 1.0)) : base;
-      const width = TW * (t.hwy ? 0.62 : t.avenue ? 0.52 : 0.36) * z;
+      const width = TW * style.width * z;
 
       ctx.lineCap = 'butt';
       ctx.strokeStyle = color;
@@ -293,8 +306,8 @@
       ctx.fill();
 
       // Centre markings: white dashes for streets, yellow for avenues.
-      ctx.strokeStyle = t.hwy ? 'rgba(255, 255, 255, 0.85)' : t.avenue ? 'rgba(242, 209, 107, 0.9)' : 'rgba(255, 255, 255, 0.7)';
-      ctx.lineWidth = Math.max(1, (t.hwy ? 1.8 : t.avenue ? 1.5 : 1.1) * z);
+      ctx.strokeStyle = style.mark;
+      ctx.lineWidth = Math.max(1, style.lw * z);
       ctx.setLineDash([4 * z, 4 * z]);
       for (const [nx, ny] of arms) {
         const p = this.project(nx + 0.5, ny + 0.5, city.tiles[ny * N + nx].el);
@@ -403,7 +416,17 @@
       let a;
       let walls;
       let roof;
-      if (b.t === 'R') {
+      if (b.t === 'V') {
+        h = [0, 8, 12, 16][lvl];
+        a = 0.26;
+        walls = VILLA_WALLS[hv % VILLA_WALLS.length];
+        roof = VILLA_ROOFS[(hv >>> 3) % VILLA_ROOFS.length];
+      } else if (b.t === 'A') {
+        h = [0, 28, 44, 62][lvl];
+        a = 0.14;
+        walls = FLAT_WALLS[hv % FLAT_WALLS.length];
+        roof = '#6d6d6d';
+      } else if (b.t === 'R') {
         h = [0, 12, 20, 34][lvl];
         a = 0.2;
         walls = HOUSE_WALLS[hv % HOUSE_WALLS.length];
@@ -429,7 +452,7 @@
         // Chimney.
         this.drawBox(x, y, 0.36, h + 14, '#5d5d5d', '#444', '#333', t.el);
       }
-      if (b.t !== 'I' && t.occ) this.drawNightWindows(base, tp, lvl + 1);
+      if (b.t !== 'I' && t.occ) this.drawNightWindows(base, tp, b.t === 'A' ? lvl * 3 + 2 : lvl + 1);
     }
 
     drawService(x, y, t, hv) {

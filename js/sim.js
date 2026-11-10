@@ -5,13 +5,14 @@
  * Model overview
  *  - The map is a SIZE x SIZE grid of tiles. Land has elevation levels (0..3),
  *    some tiles are water (lakes, or a river that can be bridged).
- *  - Players lay streets and avenues, paint residential / commercial / industrial
- *    zones and place services and utilities.
+ *  - Players lay roads (local road, street, avenue, highway), paint zones for
+ *    houses, villas, apartments, shops and industry, and place services and
+ *    utilities.
  *  - Road networks are flood-filled. Everything touching a road belongs to that
  *    network. Utilities only work if they touch a road, so a power plant must
  *    be connected to the zones it should power.
  *  - Residents commute over the road network to the nearest reachable job.
- *    Each road tile has a capacity; overloaded roads jam and unhappy residents.
+ *    Each road type has a capacity; overloaded roads jam and unhappy residents.
  *  - Zoned buildings grow when there is demand, get upgraded when happy and
  *    prosperous, and decay when disconnected or unhappy.
  *  - Each simulated day collects taxes and pays upkeep.
@@ -32,17 +33,23 @@
   const BULLDOZE_COST = 10;
   const TREE_COST = 2;
   const BRIDGE_COST = 80; // extra cost per river tile on top of the road
-  const SAVE_VERSION = 2;
+  const SAVE_VERSION = 3;
   const MILESTONES = [50, 100, 250, 500, 1000, 2500, 5000, 10000];
 
+  // Road types, from the cheapest to the widest. `rank` decides upgrades: a road
+  // can only be upgraded to a higher rank, never replaced by a lower one.
   const ROAD = {
-    street: { cost: 20, upkeep: 0.25, capacity: 60 },
-    avenue: { cost: 60, upgradeCost: 40, upkeep: 0.6, capacity: 150 },
-    highway: { cost: 120, upgradeCost: 80, upkeep: 1.2, capacity: 240 },
+    local: { name: 'Landweg', cost: 10, upkeep: 0.1, capacity: 30, rank: 0 },
+    street: { name: 'Straat', cost: 20, upgradeCost: 15, upkeep: 0.25, capacity: 60, rank: 1 },
+    avenue: { name: 'Laan', cost: 60, upgradeCost: 40, upkeep: 0.6, capacity: 150, rank: 2 },
+    highway: { name: 'Snelweg', cost: 120, upgradeCost: 80, upkeep: 1.2, capacity: 240, rank: 3 },
   };
+  const ROAD_KINDS = Object.keys(ROAD);
   const HIGHWAY_PREFAB_LENGTH = 12;
 
   // Level index 0 is unused so that b.lvl (1..3) can index directly.
+  // Residential zones: R (houses), V (villas), A (apartments). They all share
+  // the residential demand (see groupOf).
   const ZONE_INFO = {
     R: {
       name: 'Woonwijk',
@@ -52,6 +59,27 @@
       power: [0, 2, 4, 7],
       water: [0, 1.5, 3, 5],
       pollution: [0, 0, 0, 0],
+      happy: 0,
+    },
+    V: {
+      name: "Villawijk",
+      capacity: [0, 3, 6, 10],
+      jobs: [0, 0, 0, 0],
+      tax: [0, 3, 5, 7],
+      power: [0, 1.5, 3, 5],
+      water: [0, 1.5, 2.5, 4],
+      pollution: [0, 0, 0, 0],
+      happy: 10, // quiet, green surroundings
+    },
+    A: {
+      name: 'Appartementen',
+      capacity: [0, 20, 45, 90],
+      jobs: [0, 0, 0, 0],
+      tax: [0, 2, 4, 6],
+      power: [0, 4, 8, 14],
+      water: [0, 3, 6, 10],
+      pollution: [0, 0, 0, 0],
+      happy: -6, // dense and busy
     },
     C: {
       name: 'Commercieel',
@@ -61,6 +89,7 @@
       power: [0, 3, 6, 10],
       water: [0, 1, 2, 3],
       pollution: [0, 0, 0, 0],
+      happy: 0,
     },
     I: {
       name: 'Industrie',
@@ -70,6 +99,7 @@
       power: [0, 5, 9, 14],
       water: [0, 2, 4, 6],
       pollution: [0, 1, 2, 3],
+      happy: 0,
     },
   };
 
@@ -86,9 +116,13 @@
 
   const isZone = (type) => Object.prototype.hasOwnProperty.call(ZONE_INFO, type);
   const isService = (type) => Object.prototype.hasOwnProperty.call(SERVICE_INFO, type);
+  const isRes = (type) => type === 'R' || type === 'V' || type === 'A';
+  // Zones that share a demand and tax setting: all housing counts as 'R'.
+  const groupOf = (type) => (isRes(type) ? 'R' : type);
   const clamp = (v, lo, hi) => (v < lo ? lo : v > hi ? hi : v);
   const tileIndex = (x, y) => y * SIZE + x;
   const inBounds = (x, y) => x >= 0 && y >= 0 && x < SIZE && y < SIZE;
+  const roadKind = (t) => (t.road && ROAD[t.rt] ? t.rt : 'street');
 
   // Deterministic PRNG (mulberry32) so terrain is reproducible from a seed.
   function mulberry32(seed) {
@@ -130,11 +164,10 @@
       river: false, // water tile that belongs to a river (bridgeable)
       tree: false,
       road: false,
-      avenue: false, // wider road with more capacity (only meaningful when road)
-      hwy: false, // highway: the widest road, nearby homes get noisier
-      z: null, // zone painted on the tile: 'R' | 'C' | 'I' | null
-      b: null, // building: { t: 'R'|'C'|'I'|serviceKey, lvl }
-      // Derived state, recomputed by refreshNetworks / simulateDay:
+      rt: 'street', // road type when road is true: 'local' | 'street' | 'avenue' | 'highway'
+      z: null, // zone painted on the tile: 'R' | 'V' | 'A' | 'C' | 'I' | null
+      b: null, // building: { t: zone or serviceKey, lvl }
+      // Derived state, recomputed by measure() / simulateDay:
       net: -1,
       powered: false,
       watered: false,
@@ -418,10 +451,10 @@
       for (let x = 0; x < SIZE; x++) {
         const i = tileIndex(x, y);
         const t = tiles[i];
-        if (!t.occ || t.b.t !== 'R') continue;
+        if (!t.occ || !isRes(t.b.t)) continue;
         const r = adjacentRoad(tiles, x, y);
         if (r < 0 || dist[r] < 0) continue;
-        let amount = ZONE_INFO.R.capacity[t.b.lvl];
+        let amount = ZONE_INFO[t.b.t].capacity[t.b.lvl];
         if (cov.metro && cov.metro[i]) amount *= 0.5;
         src[r] += amount;
       }
@@ -443,8 +476,7 @@
     for (let i = 0; i < N; i++) {
       const t = tiles[i];
       if (t.road) {
-        const cap = t.hwy ? ROAD.highway.capacity : t.avenue ? ROAD.avenue.capacity : ROAD.street.capacity;
-        t.cong = load[i] / cap;
+        t.cong = load[i] / ROAD[roadKind(t)].capacity;
         if (t.cong >= 1) jammed++;
       } else {
         t.cong = 0;
@@ -478,7 +510,8 @@
     h -= Math.min(2, t.cong) * 8;
     // Highways next to a home are noisy.
     for (const [nx, ny] of neighbors(x, y)) {
-      if (city.tiles[tileIndex(nx, ny)].hwy) {
+      const n = city.tiles[tileIndex(nx, ny)];
+      if (n.road && n.rt === 'highway') {
         h -= 6;
         break;
       }
@@ -491,6 +524,8 @@
     if (cov.hospital[i]) h += 6;
     h += Math.min(3, cov.commercial[i]) * 2;
     h -= Math.min(3, cov.industrial[i]) * 4;
+    // Each housing type has its own feel: villas are quiet, flats are busy.
+    if (t.b && isRes(t.b.t)) h += ZONE_INFO[t.b.t].happy;
     // Taxes above the default make residents unhappy, below it they cheer up.
     h -= (city.tax.R - DEFAULT_TAX) * 200;
     return Math.round(clamp(h, 0, 100));
@@ -532,14 +567,14 @@
     for (let y = 0; y < SIZE; y++) {
       for (let x = 0; x < SIZE; x++) {
         const t = tiles[tileIndex(x, y)];
-        if (t.road) upkeep += t.hwy ? ROAD.highway.upkeep : t.avenue ? ROAD.avenue.upkeep : ROAD.street.upkeep;
+        if (t.road) upkeep += ROAD[roadKind(t)].upkeep;
         if (!t.b) continue;
         if (isService(t.b.t)) {
           upkeep += SERVICE_INFO[t.b.t].upkeep;
         } else if (t.occ) {
           const net = city.nets[t.net];
           const operating = Math.min(net.powerRatio, net.waterRatio);
-          const rate = city.tax[t.b.t] / DEFAULT_TAX;
+          const rate = city.tax[groupOf(t.b.t)] / DEFAULT_TAX;
           income += ZONE_INFO[t.b.t].tax[t.b.lvl] * rate * operating;
         }
       }
@@ -567,7 +602,7 @@
         if (!t.b || !isZone(t.b.t)) continue;
         const info = ZONE_INFO[t.b.t];
         const lvl = t.b.lvl;
-        if (t.b.t === 'R') {
+        if (isRes(t.b.t)) {
           t.happy = residentHappiness(city, cov, x, y);
           happySum += t.happy;
           happyN++;
@@ -617,7 +652,7 @@
 
     const { pop, jobs, comJobs, indJobs } = measure(city);
 
-    // Demand per zone, roughly between -1 (too much) and +1 (very needed).
+    // Demand per zone group, roughly between -1 (too much) and +1 (very needed).
     city.demand.R = clamp(0.5 + (jobs - pop) / Math.max(40, pop), -1, 1);
     city.demand.C = clamp(0.5 + (pop * 0.3 - comJobs) / Math.max(30, pop * 0.3), -1, 1);
     city.demand.I = clamp(0.5 + (pop * 0.2 - indJobs) / Math.max(30, pop * 0.2), -1, 1);
@@ -630,7 +665,7 @@
         const t = tiles[tileIndex(x, y)];
         if (!t.b) {
           if (t.z && !t.road && t.net >= 0) {
-            const d = city.demand[t.z];
+            const d = city.demand[groupOf(t.z)];
             if (d > 0.05 && rnd() < 0.18 * d) {
               t.b = { t: t.z, lvl: 1 };
               spawned++;
@@ -652,13 +687,13 @@
 
         if (t.occ) {
           if (t.b.lvl < MAX_LEVEL) {
-            const d = Math.max(0, city.demand[type]);
+            const d = Math.max(0, city.demand[groupOf(type)]);
             let p = 0;
-            if (type === 'R') p = t.happy >= 55 && t.cong < 1 ? 0.06 * d : 0;
+            if (isRes(type)) p = t.happy >= 55 && t.cong < 1 ? 0.06 * d : 0;
             else p = 0.05 * d;
             if (rnd() < p) t.b.lvl++;
           }
-          if (type === 'R' && t.happy < 20 && rnd() < 0.03) {
+          if (isRes(type) && t.happy < 20 && rnd() < 0.03) {
             t.b.lvl--;
             if (t.b.lvl <= 0) t.b = null;
           }
@@ -672,15 +707,9 @@
 
     // Economy: taxes in, upkeep out.
     const eco = computeEconomy(city);
-    const income = eco.income;
-    const upkeep = eco.upkeep;
-    city.money = Math.round(city.money + income - upkeep);
-    city.stats.income = Math.round(income);
-    city.stats.upkeep = Math.round(upkeep);
-
-    // Keep the measured values from measure(); add this day's money flow.
-    city.stats.income = Math.round(income);
-    city.stats.upkeep = Math.round(upkeep);
+    city.money = Math.round(city.money + eco.income - eco.upkeep);
+    city.stats.income = Math.round(eco.income);
+    city.stats.upkeep = Math.round(eco.upkeep);
     const { powerRatio, waterRatio, jammed } = city.stats;
 
     city.history.push({ day: city.day, pop, money: city.money });
@@ -695,7 +724,7 @@
     if (pop > 0 && powerRatio < 1) events.push({ kind: 'bad', text: 'Stroomtekort: bouw extra elektriciteitscentrales.' });
     if (pop > 0 && waterRatio < 1) events.push({ kind: 'bad', text: 'Watertekort: bouw extra waterpompen.' });
     if (jammed >= 3 && city.day % 7 === 0) {
-      events.push({ kind: 'bad', text: `Files op ${jammed} wegvakken. Bouw een laan of een metrostation.` });
+      events.push({ kind: 'bad', text: `Files op ${jammed} wegvakken. Bouw een laan of een snelweg.` });
     }
     if (abandoned > 0) events.push({ kind: 'bad', text: `${abandoned} gebouw(en) verlaten omdat ze niet aan een weg liggen.` });
     if (spawned > 0 && city.day % 5 === 0) {
@@ -712,6 +741,14 @@
 
   const result = (ok, cost, reason, noop) => ({ ok: !!ok, cost: cost || 0, reason: reason || '', noop: !!noop });
 
+  // The road type an action asks for. Older callers pass avenue / highway flags.
+  function actionRoadKind(act) {
+    if (act.kind && ROAD[act.kind]) return act.kind;
+    if (act.highway) return 'highway';
+    if (act.avenue) return 'avenue';
+    return 'street';
+  }
+
   // Dry-run: says whether an action would succeed on a tile and what it costs.
   function checkAction(city, act, x, y) {
     if (!inBounds(x, y)) return result(false, 0, 'Buiten het veld');
@@ -720,17 +757,16 @@
     switch (act.type) {
       case 'road': {
         if (t.b) return result(false, 0, 'Sloop eerst het gebouw');
+        const want = actionRoadKind(act);
         if (t.road) {
-          // Roads only get upgraded: street -> avenue -> highway, never back.
-          const rank = t.hwy ? 2 : t.avenue ? 1 : 0;
-          const want = act.highway ? 2 : act.avenue ? 1 : 0;
-          if (want <= rank) return result(true, 0, '', true);
-          const upgrade = want === 2 ? ROAD.highway.upgradeCost : ROAD.avenue.upgradeCost;
+          // Roads only get upgraded, never replaced by a narrower road.
+          if (ROAD[want].rank <= ROAD[roadKind(t)].rank) return result(true, 0, '', true);
+          const upgrade = ROAD[want].upgradeCost;
           if (city.money < upgrade) return result(false, upgrade, 'Niet genoeg geld');
           return result(true, upgrade);
         }
         if (t.g === 'water' && !t.river) return result(false, 0, 'Je kunt niet over een meer bouwen');
-        let cost = act.highway ? ROAD.highway.cost : act.avenue ? ROAD.avenue.cost : ROAD.street.cost;
+        let cost = ROAD[want].cost;
         if (t.g === 'water') cost += BRIDGE_COST;
         if (city.money < cost) return result(false, cost, 'Niet genoeg geld');
         return result(true, cost);
@@ -776,18 +812,18 @@
     if (!r.ok || r.noop) return r;
     const t = city.tiles[tileIndex(x, y)];
     switch (act.type) {
-      case 'road':
+      case 'road': {
+        const want = actionRoadKind(act);
         if (t.road) {
-          if (act.highway) t.hwy = true;
-          else t.avenue = true;
+          t.rt = want;
         } else {
           t.road = true;
-          t.avenue = !!act.avenue && !act.highway;
-          t.hwy = !!act.highway;
+          t.rt = want;
           t.z = null;
           t.tree = false;
         }
         break;
+      }
       case 'zone':
         t.z = act.zone;
         t.tree = false;
@@ -799,8 +835,7 @@
         break;
       case 'bulldoze':
         t.road = false;
-        t.avenue = false;
-        t.hwy = false;
+        t.rt = 'street';
         t.b = null;
         t.z = null;
         t.tree = false;
@@ -830,7 +865,7 @@
     rows.push(['Terrein', t.g === 'water' ? (t.river ? 'Rivier' : 'Meer') : t.tree ? 'Bos' : 'Gras']);
     if (t.g !== 'water') rows.push(['Hoogte', String(t.el)]);
     if (t.road) {
-      rows.push(['Weg', t.hwy ? 'Snelweg' : t.avenue ? 'Laan' : 'Straat']);
+      rows.push(['Weg', ROAD[roadKind(t)].name]);
       if (t.g === 'water') rows.push(['Brug', 'Ja']);
       rows.push(['Verkeersdruk', pct(t.cong)]);
     }
@@ -853,7 +888,7 @@
       }
       if (!t.road) rows.push(['Verkeersdruk', pct(t.cong)]);
     }
-    if (t.b && t.b.t === 'R') rows.push(['Geluk', `${t.happy} / 100`]);
+    if (t.b && isRes(t.b.t)) rows.push(['Geluk', `${t.happy} / 100`]);
     rows.push(['Vervuiling', city.pollution[i].toFixed(1)]);
     return rows;
   }
@@ -876,17 +911,24 @@
         river: t.river,
         tree: t.tree,
         road: t.road,
-        avenue: t.avenue,
-        hwy: t.hwy,
+        rt: t.rt,
         z: t.z,
         b: t.b,
       })),
     });
   }
 
+  // Reads the road type from a save. Version 1 and 2 saves stored avenue / hwy flags.
+  function roadTypeFromSave(s, version) {
+    if (version >= 3) return ROAD[s.rt] ? s.rt : 'street';
+    if (s.hwy) return 'highway';
+    if (s.avenue) return 'avenue';
+    return 'street';
+  }
+
   function deserialize(json) {
     const d = typeof json === 'string' ? JSON.parse(json) : json;
-    if (!d || (d.v !== 1 && d.v !== SAVE_VERSION) || !Array.isArray(d.tiles) || d.tiles.length !== SIZE * SIZE) {
+    if (!d || ![1, 2, SAVE_VERSION].includes(d.v) || !Array.isArray(d.tiles) || d.tiles.length !== SIZE * SIZE) {
       throw new Error('Ongeldig opslagbestand');
     }
     const city = {
@@ -909,8 +951,7 @@
         t.river = !!s.river;
         t.tree = !!s.tree;
         t.road = !!s.road;
-        t.avenue = !!s.avenue;
-        t.hwy = !!s.hwy;
+        t.rt = t.road ? roadTypeFromSave(s, d.v) : 'street';
         t.z = s.z && isZone(s.z) ? s.z : null;
         t.b = s.b && (isZone(s.b.t) || isService(s.b.t)) ? { t: s.b.t, lvl: s.b.lvl || 1 } : null;
         return t;
@@ -927,6 +968,7 @@
     MAX_LEVEL,
     MAX_ELEVATION,
     ROAD,
+    ROAD_KINDS,
     BRIDGE_COST,
     HIGHWAY_PREFAB_LENGTH,
     highwayPrefab,
@@ -947,5 +989,6 @@
     inBounds,
     isZone,
     isService,
+    isRes,
   };
 });

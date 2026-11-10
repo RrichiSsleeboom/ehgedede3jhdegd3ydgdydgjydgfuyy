@@ -260,7 +260,7 @@ test('an upgraded street becomes an avenue, and avenues do not go back', () => {
   const up = Sim.applyAction(city, { type: 'road', avenue: true }, 30, 30);
   assert.ok(up.ok && !up.noop);
   assert.equal(up.cost, Sim.ROAD.avenue.upgradeCost);
-  assert.equal(city.tiles[idx(30, 30)].avenue, true);
+  assert.equal(city.tiles[idx(30, 30)].rt, 'avenue');
   const back = Sim.checkAction(city, { type: 'road', avenue: false }, 30, 30);
   assert.equal(back.noop, true);
 });
@@ -316,12 +316,12 @@ test('version 2 save keeps elevation, rivers and avenues', () => {
   const city = Sim.createCity({ seed: 42 });
   const river = city.tiles.findIndex((t) => t.river);
   const hill = city.tiles.findIndex((t) => t.g === 'grass' && t.el === 2);
-  city.tiles[hill].avenue = true;
+  city.tiles[hill].rt = 'avenue';
   city.tiles[hill].road = true;
   const copy = Sim.deserialize(Sim.serialize(city));
   assert.equal(copy.tiles[river].river, true);
   assert.equal(copy.tiles[hill].el, 2);
-  assert.equal(copy.tiles[hill].avenue, true);
+  assert.equal(copy.tiles[hill].rt, 'avenue');
 });
 
 test('version 1 saves still load, with flat land and no rivers', () => {
@@ -332,11 +332,12 @@ test('version 1 saves still load, with flat land and no rivers', () => {
   for (const t of v1.tiles) {
     delete t.el;
     delete t.river;
-    delete t.avenue;
+    t.avenue = t.rt === 'avenue';
+    delete t.rt;
   }
   const copy = Sim.deserialize(v1);
   assert.equal(copy.tiles[idx(25, 30)].road, true);
-  assert.equal(copy.tiles[idx(25, 30)].avenue, false);
+  assert.equal(copy.tiles[idx(25, 30)].rt, 'street');
   assert.equal(copy.tiles[idx(25, 30)].el, 0);
 });
 
@@ -370,15 +371,15 @@ test('a highway prefab places twelve highway tiles that carry more traffic', () 
     assert.ok(r.ok && !r.noop, r.reason);
   }
   Sim.refreshNetworks(city);
-  assert.ok(seg.every((p) => city.tiles[idx(p.x, p.y)].hwy && city.tiles[idx(p.x, p.y)].road));
+  assert.ok(seg.every((p) => city.tiles[idx(p.x, p.y)].rt === 'highway' && city.tiles[idx(p.x, p.y)].road));
   // Upgrading never goes back to an avenue.
-  assert.equal(Sim.checkAction(city, { type: 'road', avenue: true }, 25, 30).noop, true);
+  assert.equal(Sim.checkAction(city, { type: 'road', kind: 'avenue' }, 25, 30).noop, true);
 });
 
 test('a highway carries 240 commuters per tile before it jams', () => {
   const city = commuteCity();
   // Turn the commute road into a highway.
-  for (let x = 20; x <= 44; x++) city.tiles[idx(x, 30)].hwy = true;
+  for (let x = 20; x <= 44; x++) city.tiles[idx(x, 30)].rt = 'highway';
   Sim.simulateDay(city, () => 0.99);
   // 150 commuters on a highway (capacity 240) -> 62.5%.
   assert.ok(Math.abs(city.tiles[idx(30, 30)].cong - 150 / 240) < 1e-9, `cong ${city.tiles[idx(30, 30)].cong}`);
@@ -396,7 +397,7 @@ test('homes next to a highway are noisier', () => {
   city.tiles[idx(28, 31)].b = { t: 'R', lvl: 1 };
   Sim.simulateDay(city, () => 0.99);
   const quiet = city.tiles[idx(28, 31)].happy;
-  city.tiles[idx(28, 30)].hwy = true;
+  city.tiles[idx(28, 30)].rt = 'highway';
   Sim.simulateDay(city, () => 0.99);
   const noisy = city.tiles[idx(28, 31)].happy;
   assert.equal(quiet - noisy, 6);
@@ -405,8 +406,108 @@ test('homes next to a highway are noisier', () => {
 test('highway flag survives a save and load', () => {
   const city = flatCity(14);
   roadRow(city, 30, 24, 26);
-  city.tiles[idx(25, 30)].hwy = true;
+  city.tiles[idx(25, 30)].rt = 'highway';
   const copy = Sim.deserialize(Sim.serialize(city));
-  assert.equal(copy.tiles[idx(25, 30)].hwy, true);
-  assert.equal(copy.tiles[idx(24, 30)].hwy, false);
+  assert.equal(copy.tiles[idx(25, 30)].rt, 'highway');
+  assert.equal(copy.tiles[idx(24, 30)].rt, 'street');
+});
+
+// ---- Road types and housing types -------------------------------------------
+
+// A flat city with power and water next to a road on row 30, and one occupied
+// building of the given zone type at (28, 31).
+function housedCity(zone, lvl = 1, seed = 15) {
+  const city = flatCity(seed);
+  roadRow(city, 30, 24, 32);
+  assert.ok(Sim.applyAction(city, { type: 'service', service: 'power' }, 24, 29).ok);
+  city.tiles[idx(23, 31)].g = 'water';
+  assert.ok(Sim.applyAction(city, { type: 'service', service: 'water' }, 24, 31).ok);
+  assert.ok(Sim.applyAction(city, { type: 'zone', zone }, 28, 31).ok);
+  Sim.refreshNetworks(city);
+  city.tiles[idx(28, 31)].b = { t: zone, lvl };
+  return city;
+}
+
+test('a local road is cheap but carries little traffic', () => {
+  assert.equal(Sim.ROAD.local.cost, 10);
+  const city = commuteCity();
+  for (let x = 20; x <= 44; x++) city.tiles[idx(x, 30)].rt = 'local';
+  Sim.simulateDay(city, () => 0.99);
+  // 150 commuters on a local road (capacity 30) -> 500%.
+  assert.ok(Math.abs(city.tiles[idx(30, 30)].cong - 5) < 1e-9, `cong ${city.tiles[idx(30, 30)].cong}`);
+  assert.ok(city.stats.jammed >= 1);
+});
+
+test('roads are upgraded local -> street -> avenue -> highway, never back', () => {
+  const city = flatCity(16);
+  assert.ok(Sim.applyAction(city, { type: 'road', kind: 'local' }, 30, 30).ok);
+  assert.equal(city.tiles[idx(30, 30)].rt, 'local');
+  assert.ok(Sim.applyAction(city, { type: 'road', kind: 'street' }, 30, 30).ok);
+  assert.equal(city.tiles[idx(30, 30)].rt, 'street');
+  assert.ok(Sim.applyAction(city, { type: 'road', kind: 'avenue' }, 30, 30).ok);
+  assert.equal(city.tiles[idx(30, 30)].rt, 'avenue');
+  assert.ok(Sim.applyAction(city, { type: 'road', kind: 'highway' }, 30, 30).ok);
+  assert.equal(city.tiles[idx(30, 30)].rt, 'highway');
+  assert.equal(Sim.checkAction(city, { type: 'road', kind: 'street' }, 30, 30).noop, true);
+  assert.equal(Sim.checkAction(city, { type: 'road', kind: 'local' }, 30, 30).noop, true);
+});
+
+test('a villa houses fewer people than a flat, and apartments fill with 20 at level 1', () => {
+  const apartments = housedCity('A', 1);
+  apartments.tiles[idx(28, 31)].b = { t: 'A', lvl: 1 };
+  Sim.simulateDay(apartments, () => 0.99);
+  assert.equal(apartments.stats.pop, 20);
+
+  const villa = housedCity('V', 1);
+  Sim.simulateDay(villa, () => 0.99);
+  assert.equal(villa.stats.pop, 3);
+});
+
+test('villas are happier than flats in the same spot', () => {
+  const villa = housedCity('V', 1);
+  Sim.simulateDay(villa, () => 0.99);
+  const happyVilla = villa.tiles[idx(28, 31)].happy;
+
+  const flat = housedCity('A', 1);
+  Sim.simulateDay(flat, () => 0.99);
+  const happyFlat = flat.tiles[idx(28, 31)].happy;
+
+  assert.equal(happyVilla - happyFlat, 16);
+});
+
+test('villas and apartments grow from their own painted zones', () => {
+  const city = flatCity(17);
+  roadRow(city, 30, 24, 32);
+  Sim.applyAction(city, { type: 'zone', zone: 'V' }, 28, 31);
+  Sim.applyAction(city, { type: 'zone', zone: 'A' }, 30, 31);
+  Sim.refreshNetworks(city);
+  // With no population yet, demand is high, so empty zones spawn buildings.
+  let spawnedV = false;
+  let spawnedA = false;
+  for (let d = 0; d < 60; d++) {
+    Sim.simulateDay(city, () => 0.01);
+    spawnedV = spawnedV || city.tiles[idx(28, 31)].b?.t === 'V';
+    spawnedA = spawnedA || city.tiles[idx(30, 31)].b?.t === 'A';
+  }
+  assert.ok(spawnedV && spawnedA, `villa ${spawnedV} flat ${spawnedA}`);
+});
+
+test('version 3 save keeps the road type, and a version 2 save reads its avenue flag', () => {
+  const city = flatCity(18);
+  roadRow(city, 30, 24, 26);
+  city.tiles[idx(25, 30)].rt = 'local';
+  const copy = Sim.deserialize(Sim.serialize(city));
+  assert.equal(copy.tiles[idx(25, 30)].rt, 'local');
+
+  const v2 = JSON.parse(Sim.serialize(city));
+  v2.v = 2;
+  for (const t of v2.tiles) {
+    t.avenue = t.rt === 'avenue';
+    t.hwy = t.rt === 'highway';
+    delete t.rt;
+  }
+  v2.tiles[idx(24, 30)].avenue = true;
+  const legacy = Sim.deserialize(v2);
+  assert.equal(legacy.tiles[idx(24, 30)].rt, 'avenue');
+  assert.equal(legacy.tiles[idx(25, 30)].rt, 'street');
 });
