@@ -15,11 +15,12 @@ npm start            # http://localhost:8080
 
 | Actie | Hoe |
 | --- | --- |
-| Gereedschap kiezen | Klik in de linkerbalk, of gebruik de toetsen `Q`, `1`–`9`, `0`, `-` |
-| Weg aanleggen | Gereedschap *Weg*, sleep een rechte lijn |
+| Gereedschap kiezen | Klik in de linkerbalk, of gebruik de toetsen `Q`, `1`–`9`, `0`, `-`, `L`, `H`, `M` |
+| Straat aanleggen | Gereedschap *Straat* (`1`), sleep een rechte lijn |
+| Laan aanleggen | Gereedschap *Laan* (`L`): dubbele capaciteit. Een bestaande straat wordt een laan |
 | Zonen | Gereedschap *Wonen*, *Commercieel* of *Industrie*, sleep een vak |
 | Slopen | Gereedschap *Slopen*, sleep een vak |
-| Dienst plaatsen | Klik op een lege tegel (park, politie, brandweer, school, centrale, waterpomp) |
+| Dienst plaatsen | Klik op een lege tegel (park, politie, brandweer, school, ziekenhuis, metro, centrale, waterpomp) |
 | Tegel bekijken | Gereedschap *Inspecteren* (`Q`), klik op een tegel |
 | Verschuiven | Rechter- of middelste muisknop ingedrukt houden, of slepen |
 | Zoomen | Scrollen |
@@ -29,6 +30,10 @@ npm start            # http://localhost:8080
 ## Spelregels
 
 - **Wegen** zijn de basis. Gebouwen en diensten moeten aan een weg liggen om te werken.
+- **Straten en lanen**: een laan kost meer maar vervoert dubbel zoveel verkeer. Een straat wordt op te waarderen tot laan.
+- **Verkeer**: bewoners pendelen over de wegen naar het dichtstbijzijnde bereikbare werk. Een weg die vol zit (rood) verlaagt het geluk van de omwonenden. Een metrostation halveert het autoverkeer in de buurt.
+- **Terrein**: het land heeft heuvels in vier niveaus, met kliffen ertussen. Een rivier snijdt de kaart in tweeën. Over de rivier kun je een **brug** bouwen (een weg op een rivierstuk, duurder). Meren kun je niet oversteken.
+- **Ziekenhuis** verhoogt het geluk in de omgeving.
 - **Wegnetwerken**: alles wat via wegen verbonden is, vormt één netwerk.
 - **Stroom** komt van een centrale en **water** van een waterpomp. Die moeten aan een weg liggen, en de pomp moet naast water staan. Ze voeden alleen gebouwen in hetzelfde netwerk.
 - **Vraag**: wonen groeit als er banen zijn, commercieel en industrie groeien als er inwoners zijn.
@@ -44,7 +49,7 @@ style.css        Opmaak
 js/sim.js        Simulatie (puur, zonder DOM): netwerken, groei, economie, opslaan
 js/render.js     Isometrische weergave op canvas
 js/ui.js         Muis- en toetsinvoer, HUD, begroting, opslaan/laden, gameloop
-tests/           Unittests voor de simulatie (node:test)
+tests/           Unittests voor de simulatie (node:test), 23 tests
 ```
 
 ## Tests
@@ -57,5 +62,5 @@ Vereist Node.js 18 of nieuwer. De tests draaien zonder browser.
 
 ## Beperkingen
 
-Dit is een eerste versie. Er is nog geen verkeerssimulatie, geen misdaad, geen onderwijs- of
-gezondheidszorgnetwerk, en geen terreinhoogte. Die zijn goede vervolgstappen.
+Nog niet aanwezig: misdaad, een begraafplaats, en het aanpassen van het terrein (heuvels en de
+rivier liggen vast). Wegen hebben geen maximale helling. Dit zijn goede vervolgstappen.

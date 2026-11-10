@@ -17,7 +17,8 @@
   //   point   -> single click places a service
   const TOOLS = [
     { id: 'inspect', group: 'Basis', label: 'Inspecteren', key: 'Q', kind: 'inspect' },
-    { id: 'road', group: 'Basis', label: 'Weg', key: '1', kind: 'line', action: { type: 'road' } },
+    { id: 'road', group: 'Basis', label: 'Straat', key: '1', kind: 'line', action: { type: 'road', avenue: false } },
+    { id: 'avenue', group: 'Basis', label: 'Laan', key: 'L', kind: 'line', action: { type: 'road', avenue: true } },
     { id: 'bulldoze', group: 'Basis', label: 'Slopen', key: '5', kind: 'rect', action: { type: 'bulldoze' } },
     { id: 'zone-R', group: 'Zones', label: 'Wonen', key: '2', kind: 'rect', action: { type: 'zone', zone: 'R' }, swatch: '#7dd87d' },
     { id: 'zone-C', group: 'Zones', label: 'Commercieel', key: '3', kind: 'rect', action: { type: 'zone', zone: 'C' }, swatch: '#6fb7ff' },
@@ -26,6 +27,8 @@
     { id: 'svc-police', group: 'Diensten', label: 'Politie', key: '7', kind: 'point', action: { type: 'service', service: 'police' } },
     { id: 'svc-fire', group: 'Diensten', label: 'Brandweer', key: '8', kind: 'point', action: { type: 'service', service: 'fire' } },
     { id: 'svc-school', group: 'Diensten', label: 'School', key: '9', kind: 'point', action: { type: 'service', service: 'school' } },
+    { id: 'svc-hospital', group: 'Diensten', label: 'Ziekenhuis', key: 'H', kind: 'point', action: { type: 'service', service: 'hospital' } },
+    { id: 'svc-metro', group: 'Diensten', label: 'Metro', key: 'M', kind: 'point', action: { type: 'service', service: 'metro' } },
     { id: 'svc-power', group: 'Nutsvoorzieningen', label: 'Centrale', key: '0', kind: 'point', action: { type: 'service', service: 'power' } },
     { id: 'svc-water', group: 'Nutsvoorzieningen', label: 'Waterpomp', key: '-', kind: 'point', action: { type: 'service', service: 'water' } },
   ];
@@ -361,6 +364,9 @@
     $('netTxt').className = net >= 0 ? 'good' : 'bad';
     $('statPop').textContent = s.pop.toLocaleString('nl-NL');
     $('statRoads').textContent = s.roads.toLocaleString('nl-NL');
+    const jamEl = $('statJam');
+    jamEl.textContent = s.jammed.toLocaleString('nl-NL');
+    jamEl.className = s.jammed > 0 ? 'bad' : 'good';
     $('statDemand').textContent = ['R', 'C', 'I']
       .map((z) => `${z} ${city.demand[z] >= 0 ? '+' : ''}${city.demand[z].toFixed(2)}`)
       .join(' · ');
@@ -407,7 +413,10 @@
       case 'inspect':
         return 'Klik op een tegel voor details. Rechtermuisknop of middelste muisknop: verschuiven. Scrollen: zoomen.';
       case 'line':
-        return 'Sleep om een rechte weg aan te leggen.';
+        if (currentTool.action.avenue) {
+          return 'Sleep om een laan aan te leggen (dubbele capaciteit). Een bestaande straat wordt een laan.';
+        }
+        return 'Sleep om een rechte straat aan te leggen. Over een rivier komt een brug (duurder).';
       case 'rect':
         return currentTool.action.type === 'zone'
           ? 'Sleep een vak om te zonen. Wegen zijn nodig om gebouwen te laten groeien.'
@@ -572,5 +581,6 @@
       return r;
     },
     tools: TOOLS.map((t) => t.id),
+    renderer,
   };
 })();
