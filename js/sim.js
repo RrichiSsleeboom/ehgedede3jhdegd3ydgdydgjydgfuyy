@@ -25,7 +25,7 @@
   'use strict';
 
   const SIZE = 64;
-  const DAY_SECONDS = 4; // real seconds per game day at 1x speed
+  const DAY_SECONDS = 3600; // real seconds per game day at 1x speed: one game day is one real hour
   const START_MONEY = 40000;
   const DEFAULT_TAX = 0.09;
   const MAX_LEVEL = 3;
